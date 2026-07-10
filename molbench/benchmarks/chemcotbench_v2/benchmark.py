@@ -143,7 +143,9 @@ def _sha256(path: Path) -> str:
 
 class ChemCoTV2Task(Task):
     columns = COLUMNS
-    uses_model_reasoning_budget = False
+    # The profiled budget covers the formal trace. Reasoning models also need
+    # room for their model-native thinking wrapper before that trace.
+    uses_model_reasoning_budget = True
 
     def __init__(
         self,

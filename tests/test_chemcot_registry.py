@@ -5,6 +5,7 @@ from pathlib import Path
 from molbench.benchmarks.chemcotbench.benchmark import ChemCoTBenchV1
 from molbench.benchmarks.chemcotbench_v2.benchmark import (
     ChemCoTBenchV2,
+    ChemCoTV2Task,
     MAX_NEW_TOKENS,
     TASKS,
 )
@@ -68,6 +69,9 @@ class ChemCoTRegistryTest(unittest.TestCase):
             configured = MAX_NEW_TOKENS[(family, subtask)]
             recommended = profile[f"{family}__{subtask}"]["recommended_max_new_tokens"]
             self.assertGreaterEqual(configured, recommended)
+
+    def test_v2_preserves_extra_budget_for_reasoning_models(self):
+        self.assertTrue(ChemCoTV2Task.uses_model_reasoning_budget)
 
 
 if __name__ == "__main__":
