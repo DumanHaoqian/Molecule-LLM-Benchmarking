@@ -25,9 +25,13 @@ pip install --quiet \
     rdkit \
     nltk \
     "rouge_score>=0.1.2" \
-    fcd_torch
+    fcd_torch \
+    gensim \
+    transformers
 # scipy<1.14: fcd_torch 1.0.7 calls linalg.sqrtm(..., disp=...) which newer
 # scipy removed. 1.13.x still supports numpy 2.0.
+# gensim + transformers: Text2Mol (mol2vec word vectors + SciBERT). No
+# torch_geometric needed — the released checkpoint is the MLP variant.
 
 python - <<'PY'
 import nltk
@@ -36,10 +40,9 @@ for pkg in ["punkt", "punkt_tab", "wordnet", "omw-1.4"]:
 print("[setup-eval] nltk data ready")
 PY
 
-echo "[setup-eval] core deps done."
+echo "[setup-eval] deps done (incl. Text2Mol: gensim + transformers)."
 echo
-echo "Text2Mol (optional) requires torch_geometric + the pretrained checkpoint:"
-echo "  pip install torch_geometric transformers"
-echo "  # download the Text2Mol checkpoint/embeddings, then set:"
-echo "  export TEXT2MOL_DIR=/path/to/text2mol_resources"
+echo "For the Text2Mol metric, download the resources once:"
+echo "  bash scripts/download_text2mol.sh"
+echo "  export TEXT2MOL_DIR=\$PWD/text2mol_resources"
 echo "Without TEXT2MOL_DIR the Text2Mol column is reported as '—'."

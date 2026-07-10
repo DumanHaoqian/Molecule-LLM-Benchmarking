@@ -1,4 +1,5 @@
 results/
+text2mol_resources/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
