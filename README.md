@@ -10,12 +10,18 @@ touching no existing code.
 | Axis | Values |
 |------|--------|
 | Models     | `chemdfm-v2` (ChemDFM-v2.0-14B, direct), `chemdfm-r` (ChemDFM-R-14B, reasoning) |
-| Benchmarks | `chebi20` ([`duongttr/chebi-20`](https://huggingface.co/datasets/duongttr/chebi-20)) |
-| Tasks      | captioning (SMILES→text), caption2smiles (text→SMILES) |
+| Benchmarks | `chebi20` ([`duongttr/chebi-20`](https://huggingface.co/datasets/duongttr/chebi-20)), `tomg` ([`phenixace/S2-TOMG-Bench`](https://huggingface.co/datasets/phenixace/S2-TOMG-Bench)) |
 
-**Metrics** — captioning: BLEU-2/4, ROUGE-1/2/L, METEOR, Text2Mol.
-caption2smiles: BLEU, exact match, Levenshtein, MACCS/RDK/Morgan FTS, FCD,
-Text2Mol, Validity. (MolT5 / ChEBI-20 protocol.)
+**chebi20** — tasks captioning (SMILES→text) + caption2smiles (text→SMILES).
+Metrics: captioning = BLEU-2/4, ROUGE-1/2/L, METEOR, Text2Mol; caption2smiles =
+BLEU, exact match, Levenshtein, MACCS/RDK/Morgan FTS, FCD, Text2Mol, Validity.
+(MolT5 / ChEBI-20 protocol.)
+
+**tomg** — text-based open molecule generation. 9 subtasks in 3 groups
+(MolCustom / MolEdit / MolOpt). Metrics per group: **SR** (success rate) and
+**WSR** (weighted success rate = SR × novelty for MolCustom, SR × similarity for
+MolEdit/MolOpt), plus the average. MolCustom novelty needs a ZINC250k reference
+(`scripts/download_tomg_zinc.sh`, `TOMG_ZINC_PATH`).
 
 ## Architecture
 
@@ -67,6 +73,16 @@ python -m molbench generate --benchmark chebi20 --model chemdfm-r  --split test 
 source /home/haoqian/Data/SAERAG/venvs/ChEBI-20-Eva/bin/activate
 export TEXT2MOL_DIR=$PWD/text2mol_resources          # enables the Text2Mol column
 python -m molbench evaluate --benchmark chebi20 --models chemdfm-v2 chemdfm-r --split test --out-dir results/full
+```
+
+TOMG-Bench (`--limit` caps examples **per subtask**, so all 9 are covered):
+
+```bash
+# generate (chemdfm venv)
+python -m molbench generate --benchmark tomg --model chemdfm-r --limit 10 --out-dir results/tomg
+# evaluate (ChEBI-20-Eva venv)
+export TOMG_ZINC_PATH=$PWD/tomg_resources/zinc250k.txt      # enables MolCustom novelty/WSR
+python -m molbench evaluate --benchmark tomg --models chemdfm-r --out-dir results/tomg
 ```
 
 Artifacts (git-ignored, under `--out-dir`):
