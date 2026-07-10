@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime
+from functools import lru_cache
 import hashlib
 import glob
 import os
@@ -44,22 +45,40 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+@lru_cache(maxsize=1)
 def _git_state() -> Dict[str, Any]:
+    code_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
     def run(*args: str) -> str:
         try:
             return subprocess.check_output(
-                ["git", *args], stderr=subprocess.DEVNULL, text=True
+                ["git", *args], cwd=code_root, stderr=subprocess.DEVNULL, text=True
             ).strip()
         except (OSError, subprocess.CalledProcessError):
             return ""
 
     commit = run("rev-parse", "HEAD")
+    root = run("rev-parse", "--show-toplevel")
     status = run("status", "--porcelain=v1", "--untracked-files=all")
     diff = run("diff", "--binary", "HEAD")
+    worktree = hashlib.sha256()
+    worktree.update(status.encode())
+    worktree.update(b"\0")
+    worktree.update(diff.encode())
+    untracked = run("ls-files", "--others", "--exclude-standard").splitlines()
+    for relative in sorted(untracked):
+        worktree.update(b"\0")
+        worktree.update(relative.encode())
+        try:
+            with open(os.path.join(root, relative), "rb") as handle:
+                for block in iter(lambda: handle.read(1024 * 1024), b""):
+                    worktree.update(block)
+        except OSError:
+            worktree.update(b"<unreadable>")
     return {
         "commit": commit or None,
         "dirty": bool(status),
-        "worktree_hash": hashlib.sha256((status + "\n" + diff).encode()).hexdigest(),
+        "worktree_hash": worktree.hexdigest(),
     }
 
 
@@ -125,6 +144,9 @@ def _prepare_generation_manifest(
     indexed_examples: Sequence[tuple[int, Dict[str, Any]]],
     generation_config: GenerationConfig,
     model_identity: Dict[str, Any],
+    benchmark_identity: Dict[str, Any],
+    task_identity: Dict[str, Any],
+    prompt_digest: str,
 ) -> Dict[str, Any]:
     config = {
         "schema_version": SCHEMA_VERSION,
@@ -132,12 +154,15 @@ def _prepare_generation_manifest(
         "benchmark": benchmark_name,
         "model_key": model_key,
         "model_identity": _model_snapshot(model_identity),
+        "benchmark_identity": benchmark_identity,
         "task": task_name,
+        "task_identity": task_identity,
         "split": split,
         "limit": limit,
         "slice": list(index_slice) if index_slice else None,
         "n": len(indexed_examples),
         "dataset_digest": dataset_digest(indexed_examples),
+        "prompt_digest": prompt_digest,
         "generation": {
             "max_new_tokens": generation_config.max_new_tokens,
             "max_batch_size": generation_config.max_batch_size,
@@ -145,6 +170,8 @@ def _prepare_generation_manifest(
             "batching": generation_config.batching,
             "length_batch_policy": generation_config.length_batch_policy,
             "token_budget": generation_config.token_budget,
+            "max_padding_ratio": generation_config.max_padding_ratio,
+            "long_prompt_threshold": generation_config.long_prompt_threshold,
         },
         "git": _git_state(),
     }
@@ -172,18 +199,14 @@ def run_generation(
     length_batch_policy: str = "128:16,256:8,384:4,512:2,inf:1",
     token_budget: int = 16384,
     heartbeat_seconds: int = 30,
+    max_padding_ratio: float = 1.25,
+    long_prompt_threshold: int = 1024,
     index_slice: Optional[Tuple[int, int]] = None,
 ) -> None:
     bench = get_benchmark(benchmark_name)
     spec = get_model_spec(model_key)
     tasks = bench.tasks()
     task_names = task_names or list(tasks)
-    examples = bench.load(split=split, limit=limit)
-    indexed_examples = _slice_examples(examples, index_slice)
-    print(
-        f"[gen] {benchmark_name} :: {model_key} :: {len(indexed_examples)} examples "
-        f"slice={index_slice or 'all'}"
-    )
 
     model = None
     stop_requested = False
@@ -203,9 +226,32 @@ def run_generation(
             if task_name not in tasks:
                 raise KeyError(f"unknown task {task_name!r}; available={list(tasks)}")
             task = tasks[task_name]
+            examples = bench.load_task(task_name, split=split, limit=limit)
+            indexed_examples = _slice_examples(examples, index_slice)
+            prompts_by_index = {
+                idx: task.build_prompt(example) for idx, example in indexed_examples
+            }
+            systems_by_index = {
+                idx: task.build_system_prompt(example) for idx, example in indexed_examples
+            }
+            prompt_digest = stable_hash(
+                [
+                    {
+                        "example_index": idx,
+                        "system_prompt": systems_by_index[idx],
+                        "user_prompt": prompts_by_index[idx],
+                    }
+                    for idx, _ in indexed_examples
+                ]
+            )
+            print(
+                f"[gen] {benchmark_name} :: {model_key} :: {task_name} :: "
+                f"{len(indexed_examples)} examples slice={index_slice or 'all'}"
+            )
             reasoning_budget = (
                 int(spec.artifact_identity.get("reasoning_budget", 0))
                 if spec.artifact_identity.get("reasoning")
+                and task.uses_model_reasoning_budget
                 else 0
             )
             generation_config = GenerationConfig(
@@ -216,6 +262,8 @@ def run_generation(
                 length_batch_policy=length_batch_policy,
                 token_budget=token_budget,
                 heartbeat_seconds=heartbeat_seconds,
+                max_padding_ratio=max_padding_ratio,
+                long_prompt_threshold=long_prompt_threshold,
             )
             paths = paths_for(out_dir, benchmark_name, model_key, task_name, split)
             requested_manifest = _prepare_generation_manifest(
@@ -228,6 +276,9 @@ def run_generation(
                 indexed_examples,
                 generation_config,
                 spec.artifact_identity,
+                bench.artifact_identity(task_name),
+                task.artifact_identity(),
+                prompt_digest,
             )
             fingerprint = requested_manifest["fingerprint"]
 
@@ -310,9 +361,6 @@ def run_generation(
 
                 rows_by_index = load_partial_rows(paths.partial)
                 expected_by_index = {idx: example for idx, example in indexed_examples}
-                prompts_by_index = {
-                    idx: task.build_prompt(example) for idx, example in indexed_examples
-                }
                 for idx, row in rows_by_index.items():
                     if idx not in expected_by_index:
                         raise ValueError(f"partial artifact contains unexpected index {idx}")
@@ -331,6 +379,7 @@ def run_generation(
                             example_id=example_id(example),
                             instruction=prompt,
                             size_hint=task.batch_length(example, prompt),
+                            system_prompt=systems_by_index[idx],
                         )
                     )
                 print(f"[resume] completed={len(rows_by_index)} pending={len(pending)}")
@@ -340,7 +389,10 @@ def run_generation(
                     if pending and model is None:
                         model = spec.build()
                     if model is not None:
-                        actual_budget = model.answer_budget(task.max_new_tokens)
+                        actual_budget = model.answer_budget(
+                            task.max_new_tokens,
+                            include_reasoning_budget=task.uses_model_reasoning_budget,
+                        )
                         if actual_budget != generation_config.max_new_tokens:
                             raise ValueError(
                                 f"model budget mismatch: manifest={generation_config.max_new_tokens} "
@@ -350,14 +402,14 @@ def run_generation(
                     with PartialWriter(paths.partial) as writer:
                         if model is not None:
                             for batch in model.iter_generate(pending, generation_config):
-                                persisted = []
                                 for output in batch.outputs:
                                     example = expected_by_index[output.example_index]
                                     record = EvalRecord(
                                         example=example,
                                         prompt=prompts_by_index[output.example_index],
-                                        raw_output=output.text,
-                                        prediction=task.postprocess(output.text),
+                                        raw_output=output.raw_text,
+                                        answer_text=output.answer_text,
+                                        prediction=task.postprocess(output.answer_text),
                                         example_index=output.example_index,
                                         example_id=example_id(example),
                                         generation_metadata={
@@ -372,9 +424,8 @@ def run_generation(
                                         },
                                     )
                                     row = record_to_row(record)
+                                    writer.append_one(row)
                                     rows_by_index[record.example_index] = row
-                                    persisted.append(row)
-                                writer.append(persisted)
                                 eta = (
                                     f"{batch.eta_seconds / 60:.1f}m"
                                     if batch.eta_seconds is not None
@@ -507,13 +558,14 @@ def _render_table(task, rows: List[dict]) -> str:
 
 
 def _evaluation_manifest(
-    generation_manifest: Dict[str, Any], task_name: str, device: str, chunk_size: int
+    generation_manifest: Dict[str, Any], task, task_name: str, device: str, chunk_size: int
 ) -> Dict[str, Any]:
     config = {
         "schema_version": SCHEMA_VERSION,
         "kind": "evaluation",
         "generation_fingerprint": generation_manifest["fingerprint"],
         "task": task_name,
+        "task_identity": task.artifact_identity(),
         "device": device,
         "chunk_size": chunk_size,
         "git": _git_state(),
@@ -567,7 +619,7 @@ def run_evaluation(
                 pred_stem(out_dir, benchmark_name, model_key, task_name, split) + "__scored"
             )
             requested = _evaluation_manifest(
-                generation_manifest, task_name, device, chunk_size
+                generation_manifest, task, task_name, device, chunk_size
             )
             fingerprint = requested["fingerprint"]
             print(f"[eval] {benchmark_name} :: {model_key} :: {task_name}")
@@ -640,10 +692,9 @@ def run_evaluation(
                                     record_to_row(record, score)
                                     for record, score in zip(chunk, scores)
                                 ]
-                                writer.append(rows)
-                                scored_rows.update(
-                                    {row["example_index"]: row for row in rows}
-                                )
+                                for row in rows:
+                                    writer.append_one(row)
+                                    scored_rows[row["example_index"]] = row
                                 _manifest_update(
                                     scored_paths.manifest,
                                     manifest,
@@ -686,6 +737,7 @@ def run_evaluation(
                     )
                     table_rows.append(
                         {
+                            "model_key": model_key,
                             "display_name": spec.display_name,
                             "params": spec.params,
                             "metrics": metrics,
@@ -718,5 +770,12 @@ def run_evaluation(
         markdown_sections.append(f"### {benchmark_name} — {task_name}\n\n{table}\n")
         result["tasks"][task_name] = table_rows
 
+    reporting = bench.aggregate_task_results(result["tasks"])
+    if reporting:
+        result["reporting"] = {
+            key: value for key, value in reporting.items() if key != "markdown"
+        }
+        if reporting.get("markdown"):
+            markdown_sections.append(reporting["markdown"])
     result["markdown"] = "\n".join(markdown_sections)
     return result

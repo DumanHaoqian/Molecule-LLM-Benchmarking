@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicitly migrate legacy prediction JSONL files to artifact schema v2."""
+"""Explicitly migrate legacy prediction JSONL files to the current schema."""
 from __future__ import annotations
 
 import argparse
@@ -71,6 +71,7 @@ def migrate(
                 "example": example,
                 "prompt": old.get("prompt", ""),
                 "raw_output": old.get("raw_output", ""),
+                "answer_text": old.get("answer_text", old.get("raw_output", "")),
                 "prediction": old.get("prediction"),
                 "generation_metadata": {"migrated_from": str(source)},
             }

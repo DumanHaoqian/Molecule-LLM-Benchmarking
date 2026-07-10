@@ -9,7 +9,7 @@ from molbench.core.io import read_json, read_records
 
 
 class MigrationTest(unittest.TestCase):
-    def test_legacy_artifact_gets_v2_rows_and_sidecars(self):
+    def test_legacy_artifact_gets_current_rows_and_sidecars(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "legacy.jsonl"
@@ -34,7 +34,11 @@ class MigrationTest(unittest.TestCase):
             subprocess.run(
                 [
                     sys.executable,
-                    "scripts/migrate_legacy_artifacts.py",
+                    str(
+                        Path(__file__).resolve().parents[1]
+                        / "scripts"
+                        / "migrate_legacy_artifacts.py"
+                    ),
                     str(source),
                     str(destination),
                     "--task",

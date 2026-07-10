@@ -5,9 +5,12 @@ from collections import defaultdict
 from statistics import mean
 import threading
 import time
-from typing import Dict, Iterator, List
+from typing import Any, Dict, Iterator, List
 
-import torch
+try:
+    import torch
+except ImportError:  # Evaluation-only environments do not need the model runtime.
+    torch = None
 
 from ..core.model import (
     GenerationBatch,
@@ -29,6 +32,12 @@ CHEMDFM_R_SYSTEM = (
     "respectively.\ni.e.,\n<think>\nreasoning process here\n</think>\n"
     "<answer>\nanswer here\n</answer>"
 )
+
+
+def _require_torch():
+    if torch is None:
+        raise RuntimeError("PyTorch is required for ChemDFM generation")
+    return torch
 
 
 class _Heartbeat:
@@ -55,14 +64,15 @@ class _Heartbeat:
 
 
 def cuda_preflight(device: str) -> None:
+    runtime = _require_torch()
     if not str(device).startswith("cuda"):
         return
-    if not torch.cuda.is_available():
+    if not runtime.cuda.is_available():
         raise RuntimeError("CUDA preflight failed: torch.cuda.is_available() is false")
     try:
-        probe = torch.ones(256, device=device)
+        probe = runtime.ones(256, device=device)
         probe = probe * 2
-        torch.cuda.synchronize(device)
+        runtime.cuda.synchronize(device)
         del probe
     except Exception as exc:
         raise RuntimeError(f"CUDA preflight failed: {exc}") from exc
@@ -75,10 +85,15 @@ class ChemDFMModel(Model):
         system: str,
         reasoning: bool = False,
         reasoning_budget: int = 1536,
-        dtype=torch.bfloat16,
+        dtype: Any = None,
         device: str = "cuda",
     ):
         from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        runtime = _require_torch()
+        if dtype is None:
+            dtype = runtime.bfloat16
+        self._torch = runtime
 
         self.device = device
         self.system = system
@@ -112,9 +127,9 @@ class ChemDFMModel(Model):
         print(f"[model] ready on {next(self.model.parameters()).device}")
         print(f"[model] stop token ids={self.eos_token_ids}")
 
-    def _build_prompt(self, instruction: str) -> str:
+    def _build_prompt(self, instruction: str, system_prompt: str | None = None) -> str:
         msg = [
-            {"role": "system", "content": self.system},
+            {"role": "system", "content": system_prompt or self.system},
             {"role": "user", "content": instruction},
         ]
         return self.tokenizer.apply_chat_template(
@@ -124,7 +139,7 @@ class ChemDFMModel(Model):
     def _prepare(self, inputs: List[GenerationInput]) -> List[PreparedInput]:
         prepared = []
         for item in inputs:
-            prompt = self._build_prompt(item.instruction)
+            prompt = self._build_prompt(item.instruction, item.system_prompt)
             tokens = len(self.tokenizer(prompt, add_special_tokens=False)["input_ids"])
             prepared.append(PreparedInput(item=item, chat_prompt=prompt, prompt_tokens=tokens))
         return prepared
@@ -132,6 +147,7 @@ class ChemDFMModel(Model):
     def _decode_batch(
         self, batch: List[PreparedInput], config: GenerationConfig, batch_id: int
     ) -> GenerationBatch:
+        runtime = self._torch
         prompts = [x.chat_prompt for x in batch]
         enc = self.tokenizer(
             prompts, return_tensors="pt", padding=True, add_special_tokens=False
@@ -147,7 +163,7 @@ class ChemDFMModel(Model):
             kwargs.update(temperature=0.9, top_p=0.9, top_k=20)
 
         if str(self.device).startswith("cuda"):
-            torch.cuda.reset_peak_memory_stats(self.device)
+            runtime.cuda.reset_peak_memory_stats(self.device)
         started = time.monotonic()
         label = (
             f"batch={batch_id} size={len(batch)} "
@@ -155,18 +171,18 @@ class ChemDFMModel(Model):
             f"prompt_tokens={min(x.prompt_tokens for x in batch)}-"
             f"{max(x.prompt_tokens for x in batch)}"
         )
-        with _Heartbeat(label, config.heartbeat_seconds), torch.inference_mode():
+        with _Heartbeat(label, config.heartbeat_seconds), runtime.inference_mode():
             out = self.model.generate(**enc, **kwargs)
             if str(self.device).startswith("cuda"):
-                torch.cuda.synchronize(self.device)
+                runtime.cuda.synchronize(self.device)
         elapsed = time.monotonic() - started
         peak_reserved = (
-            torch.cuda.max_memory_reserved(self.device)
+            runtime.cuda.max_memory_reserved(self.device)
             if str(self.device).startswith("cuda")
             else 0
         )
         total_memory = (
-            torch.cuda.get_device_properties(self.device).total_memory
+            runtime.cuda.get_device_properties(self.device).total_memory
             if str(self.device).startswith("cuda")
             else 0
         )
@@ -188,13 +204,14 @@ class ChemDFMModel(Model):
                 stop_token_id = None
                 output_tokens = len(values)
                 finish_reason = "length" if len(values) >= config.max_new_tokens else "unknown"
-            decoded = self.tokenizer.decode(
+            raw_text = self.tokenizer.decode(
                 token_row[:output_tokens], skip_special_tokens=True
             )
             outputs.append(
                 GenerationOutput(
                     example_index=prepared_item.item.example_index,
-                    text=parse_answer(decoded, self.reasoning),
+                    raw_text=raw_text,
+                    answer_text=parse_answer(raw_text, self.reasoning),
                     prompt_tokens=prepared_item.prompt_tokens,
                     output_tokens=output_tokens,
                     finish_reason=finish_reason,
@@ -230,13 +247,14 @@ class ChemDFMModel(Model):
             yield self._decode_batch(batch, config, batch_id)
             return
         except RuntimeError as exc:
-            is_oom = isinstance(exc, torch.cuda.OutOfMemoryError) or "out of memory" in str(exc).lower()
+            runtime = getattr(self, "_torch", None) or _require_torch()
+            is_oom = isinstance(exc, runtime.cuda.OutOfMemoryError) or "out of memory" in str(exc).lower()
             if not is_oom:
                 raise
             if len(batch) == 1:
                 raise
             split_at = len(batch) // 2
-        torch.cuda.empty_cache()
+        runtime.cuda.empty_cache()
         assert split_at is not None
         print(
             f"[gen] CUDA OOM in batch {batch_id}; "

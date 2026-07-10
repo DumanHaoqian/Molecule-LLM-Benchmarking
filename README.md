@@ -10,7 +10,7 @@ touching no existing code.
 | Axis | Values |
 |------|--------|
 | Models     | `chemdfm-v2` (ChemDFM-v2.0-14B, direct), `chemdfm-r` (ChemDFM-R-14B, reasoning) |
-| Benchmarks | `chebi20` ([`duongttr/chebi-20`](https://huggingface.co/datasets/duongttr/chebi-20)), `tomg` ([`phenixace/S2-TOMG-Bench`](https://huggingface.co/datasets/phenixace/S2-TOMG-Bench)) |
+| Benchmarks | `chebi20`, `tomg`, `chemcotbench` (V1), `chemcotbench-v2` |
 
 **chebi20** — tasks captioning (SMILES→text) + caption2smiles (text→SMILES).
 Metrics: captioning = BLEU-2/4, ROUGE-1/2/L, METEOR, Text2Mol; caption2smiles =
@@ -22,6 +22,15 @@ BLEU, exact match, Levenshtein, MACCS/RDK/Morgan FTS, FCD, Text2Mol, Validity.
 **WSR** (weighted success rate = SR × novelty for MolCustom, SR × similarity for
 MolEdit/MolOpt), plus the average. MolCustom novelty needs a ZINC250k reference
 (`scripts/download_tomg_zinc.sh`, `TOMG_ZINC_PATH`).
+
+**chemcotbench** — the 1,495-sample gated V1 release, represented as 19
+independently resumable source tasks. Metrics cover molecule understanding,
+editing, optimization, reaction prediction, and mechanism selection.
+
+**chemcotbench-v2** — 5,620 samples across 31 implementation subtasks. The
+pinned official parsers and verifiers produce separate Layer 1 outcome, Layer 2
+template-adherence, and Layer 3 process-validity results, then aggregate them
+into the paper's 18 reporting tasks.
 
 ## Architecture
 
@@ -94,8 +103,9 @@ Artifacts (git-ignored, under `--out-dir`):
 `tables_<benchmark>_<split>.md`, `metrics_<benchmark>_<split>.json`.
 Without `TEXT2MOL_DIR`, all other metrics still compute and Text2Mol shows `—`.
 
-Generation and per-example evaluation are transactional. Every completed batch
-is appended to a schema-v2 `.partial.jsonl`, flushed and `fsync`'d. Re-running
+Generation and per-example evaluation are transactional. Every generated
+record is appended separately to a schema-v3 `.partial.jsonl`, flushed and
+`fsync`'d. Schema v2 artifacts have an explicit compatibility reader. Re-running
 the same command resumes after validating the dataset/model/config/code
 fingerprint. `--restart` archives active artifacts before starting over; it
 never mixes incompatible runs. A forced process kill loses at most the current
@@ -106,6 +116,48 @@ ChEBI captioning uses conservative SMILES-length batches by default: 16 up to
 model also enforces the token budget after applying its full chat template.
 Progress logs report prompt/output lengths, peak reserved GPU memory, elapsed
 time, ETA, and a heartbeat while a long batch is still computing.
+
+Batch planning is based on both character buckets and the exact rendered chat
+prompt token count. Inputs above `--long-prompt-threshold` are forced to batch
+1, batches cannot exceed `--max-padding-ratio`, and CUDA OOM recursively splits
+the physical batch. ChemCoTBench-V2 output budgets are task-specific values
+derived from the committed ChemDFM tokenizer profile at
+`resources/chemcotbench/v2_token_profile.json`.
+
+## ChemCoTBench setup and run
+
+Download and verify the pinned snapshots. V1 requires accepting its Hugging
+Face access conditions and setting `HF_TOKEN`.
+
+```bash
+python scripts/fetch_chemcotbench.py --version v2
+HF_TOKEN=... python scripts/fetch_chemcotbench.py --version v1
+bash scripts/setup_chemcot_eval_envs.sh both
+```
+
+The evaluator-only environments use Python 3.10, scikit-learn 1.2.2, and
+RDKit 2023.9.6 because the released JNK TDC oracle contains a legacy sklearn
+pickle. They do not install PyTorch and remain isolated from the ChemDFM
+generation environment. Oracle binaries are ignored by Git; their expected
+sizes and SHA256 digests are tracked in
+`resources/chemcotbench/oracle_sources.json`.
+
+List the independent task names, run one family, or use the idempotent driver:
+
+```bash
+python -m molbench list-tasks --benchmark chemcotbench-v2
+python -m molbench generate --benchmark chemcotbench-v2 --model chemdfm-v2 \
+  --family mol_edit --max-batch-size 8 --max-padding-ratio 1.20 \
+  --long-prompt-threshold 1024 --out-dir results/chemcotbench
+bash scripts/run_chemcotbench.sh --version v2 --family mol_edit
+```
+
+V2 generation uses the exact released task-specific system/user prompts. The
+model completion is retained as `raw_output`; model-level answer extraction is
+stored separately as `answer_text`. A known defect in the pinned public release
+omits both model-facing SMILES for `mol_und.smiles_equivalent.0097`; the loader
+explicitly reconstructs them from the released canonical states and records an
+`input_repair` object in that example and its run fingerprint.
 
 The full v2 driver owns its log and supports stage boundaries:
 
@@ -122,10 +174,11 @@ the reader:
 python scripts/migrate_legacy_artifacts.py OLD.jsonl NEW.v2.jsonl --task captioning
 ```
 
-## Adding a new benchmark (e.g. ChemCoTBench)
+## Adding a new benchmark
 
-1. Create `molbench/benchmarks/chemcotbench/benchmark.py` with:
-   - a `Benchmark` subclass implementing `load(split, limit)` and `tasks()`,
+1. Create `molbench/benchmarks/<name>/benchmark.py` with:
+   - a `Benchmark` subclass implementing `load_task(task_name, split, limit)`
+   and `tasks()`,
    - one `Task` subclass per direction implementing `build_prompt`,
    `postprocess`, `evaluate` (calling the shared `molbench.metrics`), and a
    `columns` list for its results table,
@@ -143,8 +196,10 @@ the model owns its chat template, system prompt, and answer parsing.
 
 ## Notes
 
-- **ChemDFM-R** emits `<think>…</think><answer>…</answer>`; the model parses the
-  `<answer>` block and gets extra `max_new_tokens` headroom for the trace.
+- **ChemDFM-R** emits `<think>…</think><answer>…</answer>`; artifacts retain the
+  complete completion and store the extracted `<answer>` separately. Tasks
+  using their own formal-trace system prompt can disable the extra reasoning
+  budget so the formal trace itself owns the full output allowance.
 - **Text2Mol** is the MLP association model (SciBERT + mol2vec); it needs
   `test_outputfinal_weights.320.pt` + MolT5's `m2v_model.pkl` (the model the
   checkpoint was trained with). Validated: matched ChEBI-20 gold pairs ~0.64,

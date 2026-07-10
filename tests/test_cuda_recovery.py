@@ -28,6 +28,7 @@ class CudaRecoveryTest(unittest.TestCase):
                     GenerationOutput(
                         item.item.example_index,
                         "ok",
+                        "ok",
                         item.prompt_tokens,
                         1,
                         "eos",

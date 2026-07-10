@@ -57,6 +57,7 @@ class BatchingTest(unittest.TestCase):
             max_batch_size=3,
             batching="fixed",
             token_budget=160,
+            max_padding_ratio=100,
         )
         planned = plan_batches(prepared, config)
         indexes = [[item.item.example_index for item in batch] for _, batch in planned]
@@ -76,6 +77,45 @@ class BatchingTest(unittest.TestCase):
         config = GenerationConfig(max_new_tokens=20, token_budget=128)
         with self.assertRaisesRegex(ValueError, "batch size 1"):
             plan_batches(prepared, config)
+
+    def test_long_prompt_is_always_isolated_by_real_token_length(self):
+        prepared = [
+            PreparedInput(
+                item=GenerationInput(i, str(i), str(i), 20),
+                chat_prompt=str(i),
+                prompt_tokens=tokens,
+            )
+            for i, tokens in enumerate((100, 1100, 105))
+        ]
+        config = GenerationConfig(
+            max_new_tokens=100,
+            max_batch_size=8,
+            token_budget=4096,
+            long_prompt_threshold=1024,
+        )
+        planned = plan_batches(prepared, config)
+        batches = [[item.item.example_index for item in batch] for _, batch in planned]
+        self.assertIn([1], batches)
+        self.assertFalse(any(1 in batch and len(batch) > 1 for batch in batches))
+
+    def test_padding_ratio_prevents_short_and_long_prompt_mixing(self):
+        prepared = [
+            PreparedInput(
+                item=GenerationInput(i, str(i), str(i), 20),
+                chat_prompt=str(i),
+                prompt_tokens=tokens,
+            )
+            for i, tokens in enumerate((100, 120, 220))
+        ]
+        config = GenerationConfig(
+            max_new_tokens=64,
+            max_batch_size=8,
+            token_budget=4096,
+            max_padding_ratio=1.25,
+        )
+        planned = plan_batches(prepared, config)
+        batches = [[item.item.example_index for item in batch] for _, batch in planned]
+        self.assertEqual(batches, [[2], [1, 0]])
 
 
 if __name__ == "__main__":

@@ -13,7 +13,8 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 from .task import EvalRecord
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+SUPPORTED_SCHEMA_VERSIONS = {2, SCHEMA_VERSION}
 
 
 def canonical_json(value: Any) -> str:
@@ -83,6 +84,7 @@ def record_to_row(record: EvalRecord, scores: Dict[str, Any] | None = None) -> D
         "example": record.example,
         "prompt": record.prompt,
         "raw_output": record.raw_output,
+        "answer_text": record.answer_text,
         "prediction": record.prediction,
         "generation_metadata": record.generation_metadata,
     }
@@ -92,9 +94,10 @@ def record_to_row(record: EvalRecord, scores: Dict[str, Any] | None = None) -> D
 
 
 def row_to_record(row: Dict[str, Any]) -> EvalRecord:
-    if row.get("schema_version") != SCHEMA_VERSION:
+    schema_version = row.get("schema_version")
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         raise ValueError(
-            f"unsupported artifact schema {row.get('schema_version')!r}; "
+            f"unsupported artifact schema {schema_version!r}; "
             "run scripts/migrate_legacy_artifacts.py first"
         )
     required = {"example_index", "example_id", "example", "prediction"}
@@ -111,6 +114,7 @@ def row_to_record(row: Dict[str, Any]) -> EvalRecord:
         example=row["example"],
         prompt=row.get("prompt", ""),
         raw_output=row.get("raw_output", ""),
+        answer_text=row.get("answer_text", row.get("raw_output", "")),
         prediction=row.get("prediction"),
         example_index=int(row["example_index"]),
         example_id=row["example_id"],
@@ -219,7 +223,7 @@ def read_records(path: str) -> List[EvalRecord]:
 
 
 class PartialWriter(AbstractContextManager):
-    """Append-only JSONL writer durable at every completed batch."""
+    """Append-only JSONL writer with explicit per-record durability."""
 
     def __init__(self, path: str):
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -231,6 +235,10 @@ class PartialWriter(AbstractContextManager):
             self._file.write(json.dumps(row, ensure_ascii=False) + "\n")
         self._file.flush()
         os.fsync(self._file.fileno())
+
+    def append_one(self, row: Dict[str, Any]) -> None:
+        """Persist one record immediately, including a file-level fsync."""
+        self.append((row,))
 
     def close(self) -> None:
         if not self._file.closed:

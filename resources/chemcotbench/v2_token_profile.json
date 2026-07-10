@@ -1,0 +1,596 @@
+{
+  "benchmark": "chemcotbench-v2",
+  "tokenizer": "/home/haoqian/Data/SAERAG/Open-Scopes/ChemDFM-Scope/ChemDFM-v2.0-14B",
+  "calibration": "recommended_max_new_tokens is ceil_to_128(P99.9 * 1.25); benchmark.py uses these recommended values",
+  "tasks": {
+    "mol_edit__add_v2": {
+      "prompt_tokens": {
+        "n": 300,
+        "p50": 1926,
+        "p95": 2029,
+        "p99": 2099,
+        "p99_9": 2134,
+        "max": 2136
+      },
+      "reference_output_tokens": {
+        "n": 300,
+        "p50": 715,
+        "p95": 880,
+        "p99": 933,
+        "p99_9": 984,
+        "max": 990
+      },
+      "recommended_max_new_tokens": 1280
+    },
+    "mol_edit__delete_v2": {
+      "prompt_tokens": {
+        "n": 300,
+        "p50": 2144,
+        "p95": 2260,
+        "p99": 2311,
+        "p99_9": 2424,
+        "max": 2428
+      },
+      "reference_output_tokens": {
+        "n": 300,
+        "p50": 804,
+        "p95": 960,
+        "p99": 1037,
+        "p99_9": 1212,
+        "max": 1235
+      },
+      "recommended_max_new_tokens": 1536
+    },
+    "mol_edit__substitute_v2": {
+      "prompt_tokens": {
+        "n": 300,
+        "p50": 1988,
+        "p95": 2070,
+        "p99": 2124,
+        "p99_9": 2232,
+        "max": 2258
+      },
+      "reference_output_tokens": {
+        "n": 300,
+        "p50": 786,
+        "p95": 971,
+        "p99": 1056,
+        "p99_9": 1149,
+        "max": 1179
+      },
+      "recommended_max_new_tokens": 1536
+    },
+    "mol_und__fg_detect": {
+      "prompt_tokens": {
+        "n": 300,
+        "p50": 1219,
+        "p95": 1261,
+        "p99": 1267,
+        "p99_9": 1273,
+        "max": 1274
+      },
+      "reference_output_tokens": {
+        "n": 300,
+        "p50": 484,
+        "p95": 684,
+        "p99": 817,
+        "p99_9": 912,
+        "max": 922
+      },
+      "recommended_max_new_tokens": 1152
+    },
+    "mol_und__ring_count": {
+      "prompt_tokens": {
+        "n": 300,
+        "p50": 1269,
+        "p95": 1317,
+        "p99": 1343,
+        "p99_9": 1354,
+        "max": 1357
+      },
+      "reference_output_tokens": {
+        "n": 300,
+        "p50": 640,
+        "p95": 817,
+        "p99": 909,
+        "p99_9": 1007,
+        "max": 1010
+      },
+      "recommended_max_new_tokens": 1280
+    },
+    "mol_und__murcko_scaffold": {
+      "prompt_tokens": {
+        "n": 300,
+        "p50": 2359,
+        "p95": 2394,
+        "p99": 2406,
+        "p99_9": 2434,
+        "max": 2439
+      },
+      "reference_output_tokens": {
+        "n": 300,
+        "p50": 848,
+        "p95": 1082,
+        "p99": 1213,
+        "p99_9": 1318,
+        "max": 1349
+      },
+      "recommended_max_new_tokens": 1664
+    },
+    "mol_und__ring_sys_scaffold": {
+      "prompt_tokens": {
+        "n": 300,
+        "p50": 1188,
+        "p95": 1235,
+        "p99": 1253,
+        "p99_9": 1260,
+        "max": 1261
+      },
+      "reference_output_tokens": {
+        "n": 300,
+        "p50": 472,
+        "p95": 690,
+        "p99": 814,
+        "p99_9": 1013,
+        "max": 1031
+      },
+      "recommended_max_new_tokens": 1280
+    },
+    "mol_und__smiles_equivalent": {
+      "prompt_tokens": {
+        "n": 300,
+        "p50": 2212,
+        "p95": 2298,
+        "p99": 2330,
+        "p99_9": 2386,
+        "max": 2398
+      },
+      "reference_output_tokens": {
+        "n": 300,
+        "p50": 1282,
+        "p95": 1817,
+        "p99": 2115,
+        "p99_9": 2411,
+        "max": 2483
+      },
+      "recommended_max_new_tokens": 3072
+    },
+    "rxn_pred__forward": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 2511,
+        "p95": 2571,
+        "p99": 2601,
+        "p99_9": 2623,
+        "max": 2626
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 1018,
+        "p95": 1496,
+        "p99": 1584,
+        "p99_9": 1727,
+        "max": 1755
+      },
+      "recommended_max_new_tokens": 2176
+    },
+    "rxn_pred__byproduct": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 2426,
+        "p95": 2498,
+        "p99": 2532,
+        "p99_9": 2556,
+        "max": 2560
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 919,
+        "p95": 1673,
+        "p99": 1899,
+        "p99_9": 2016,
+        "max": 2027
+      },
+      "recommended_max_new_tokens": 2560
+    },
+    "rxn_pred__nepp": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 2352,
+        "p95": 2411,
+        "p99": 2429,
+        "p99_9": 2458,
+        "max": 2459
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 1242,
+        "p95": 1948,
+        "p99": 2065,
+        "p99_9": 2656,
+        "max": 2729
+      },
+      "recommended_max_new_tokens": 3328
+    },
+    "rxn_pred__retro": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 3780,
+        "p95": 3862,
+        "p99": 3884,
+        "p99_9": 3890,
+        "max": 3891
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 1346,
+        "p95": 1852,
+        "p99": 2111,
+        "p99_9": 2172,
+        "max": 2183
+      },
+      "recommended_max_new_tokens": 2816
+    },
+    "rxn_pred__rxn_template": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 2936,
+        "p95": 3100,
+        "p99": 3163,
+        "p99_9": 3236,
+        "max": 3251
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 1136,
+        "p95": 1346,
+        "p99": 1443,
+        "p99_9": 1560,
+        "max": 1587
+      },
+      "recommended_max_new_tokens": 2048
+    },
+    "rxn_pred__mech_sel": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 2113,
+        "p95": 2148,
+        "p99": 2157,
+        "p99_9": 2173,
+        "max": 2177
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 889,
+        "p95": 1099,
+        "p99": 1207,
+        "p99_9": 1350,
+        "max": 1385
+      },
+      "recommended_max_new_tokens": 1792
+    },
+    "rxn_pred__rcr_catalyst": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 2527,
+        "p95": 2588,
+        "p99": 2613,
+        "p99_9": 2666,
+        "max": 2677
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 497,
+        "p95": 738,
+        "p99": 864,
+        "p99_9": 926,
+        "max": 941
+      },
+      "recommended_max_new_tokens": 1280
+    },
+    "rxn_pred__rcr_reagent": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 2760,
+        "p95": 2832,
+        "p99": 2866,
+        "p99_9": 2897,
+        "max": 2903
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 704,
+        "p95": 821,
+        "p99": 864,
+        "p99_9": 986,
+        "max": 1013
+      },
+      "recommended_max_new_tokens": 1280
+    },
+    "rxn_pred__rcr_solvent": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 1643,
+        "p95": 1715,
+        "p99": 1746,
+        "p99_9": 1769,
+        "max": 1775
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 696,
+        "p95": 831,
+        "p99": 885,
+        "p99_9": 958,
+        "max": 969
+      },
+      "recommended_max_new_tokens": 1280
+    },
+    "rxn_pred__condition_ranking": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 1899,
+        "p95": 2260,
+        "p99": 2294,
+        "p99_9": 2317,
+        "max": 2317
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 654,
+        "p95": 743,
+        "p99": 792,
+        "p99_9": 856,
+        "max": 868
+      },
+      "recommended_max_new_tokens": 1152
+    },
+    "rxn_pred__yield_pred": {
+      "prompt_tokens": {
+        "n": 200,
+        "p50": 1984,
+        "p95": 2074,
+        "p99": 2087,
+        "p99_9": 2092,
+        "max": 2093
+      },
+      "reference_output_tokens": {
+        "n": 200,
+        "p50": 660,
+        "p95": 767,
+        "p99": 800,
+        "p99_9": 815,
+        "max": 816
+      },
+      "recommended_max_new_tokens": 1024
+    },
+    "mol_opt__logp": {
+      "prompt_tokens": {
+        "n": 120,
+        "p50": 896,
+        "p95": 909,
+        "p99": 915,
+        "p99_9": 916,
+        "max": 916
+      },
+      "reference_output_tokens": {
+        "n": 120,
+        "p50": 842,
+        "p95": 1042,
+        "p99": 1151,
+        "p99_9": 1180,
+        "max": 1183
+      },
+      "recommended_max_new_tokens": 1536
+    },
+    "mol_opt__qed": {
+      "prompt_tokens": {
+        "n": 120,
+        "p50": 888,
+        "p95": 901,
+        "p99": 904,
+        "p99_9": 908,
+        "max": 909
+      },
+      "reference_output_tokens": {
+        "n": 120,
+        "p50": 668,
+        "p95": 971,
+        "p99": 1031,
+        "p99_9": 1479,
+        "max": 1539
+      },
+      "recommended_max_new_tokens": 1920
+    },
+    "mol_opt__solubility": {
+      "prompt_tokens": {
+        "n": 120,
+        "p50": 908,
+        "p95": 921,
+        "p99": 925,
+        "p99_9": 926,
+        "max": 926
+      },
+      "reference_output_tokens": {
+        "n": 120,
+        "p50": 725,
+        "p95": 871,
+        "p99": 905,
+        "p99_9": 908,
+        "max": 908
+      },
+      "recommended_max_new_tokens": 1152
+    },
+    "mol_opt__drd": {
+      "prompt_tokens": {
+        "n": 120,
+        "p50": 900,
+        "p95": 912,
+        "p99": 917,
+        "p99_9": 917,
+        "max": 917
+      },
+      "reference_output_tokens": {
+        "n": 120,
+        "p50": 758,
+        "p95": 1028,
+        "p99": 1117,
+        "p99_9": 1132,
+        "max": 1133
+      },
+      "recommended_max_new_tokens": 1536
+    },
+    "mol_opt__jnk": {
+      "prompt_tokens": {
+        "n": 120,
+        "p50": 896,
+        "p95": 910,
+        "p99": 917,
+        "p99_9": 917,
+        "max": 917
+      },
+      "reference_output_tokens": {
+        "n": 120,
+        "p50": 787,
+        "p95": 963,
+        "p99": 1036,
+        "p99_9": 1065,
+        "max": 1069
+      },
+      "recommended_max_new_tokens": 1408
+    },
+    "mol_opt__gsk": {
+      "prompt_tokens": {
+        "n": 120,
+        "p50": 907,
+        "p95": 917,
+        "p99": 919,
+        "p99_9": 921,
+        "max": 921
+      },
+      "reference_output_tokens": {
+        "n": 120,
+        "p50": 814,
+        "p95": 1012,
+        "p99": 1070,
+        "p99_9": 1107,
+        "max": 1112
+      },
+      "recommended_max_new_tokens": 1408
+    },
+    "mol_opt__logp_qed": {
+      "prompt_tokens": {
+        "n": 50,
+        "p50": 942,
+        "p95": 954,
+        "p99": 958,
+        "p99_9": 959,
+        "max": 959
+      },
+      "reference_output_tokens": {
+        "n": 50,
+        "p50": 743,
+        "p95": 894,
+        "p99": 903,
+        "p99_9": 905,
+        "max": 905
+      },
+      "recommended_max_new_tokens": 1152
+    },
+    "mol_opt__logp_solubility": {
+      "prompt_tokens": {
+        "n": 50,
+        "p50": 963,
+        "p95": 979,
+        "p99": 980,
+        "p99_9": 981,
+        "max": 981
+      },
+      "reference_output_tokens": {
+        "n": 50,
+        "p50": 786,
+        "p95": 1046,
+        "p99": 1148,
+        "p99_9": 1148,
+        "max": 1148
+      },
+      "recommended_max_new_tokens": 1536
+    },
+    "mol_opt__qed_solubility": {
+      "prompt_tokens": {
+        "n": 50,
+        "p50": 958,
+        "p95": 965,
+        "p99": 970,
+        "p99_9": 971,
+        "max": 971
+      },
+      "reference_output_tokens": {
+        "n": 50,
+        "p50": 817,
+        "p95": 1073,
+        "p99": 1120,
+        "p99_9": 1148,
+        "max": 1151
+      },
+      "recommended_max_new_tokens": 1536
+    },
+    "mol_opt__drd_logp": {
+      "prompt_tokens": {
+        "n": 50,
+        "p50": 958,
+        "p95": 969,
+        "p99": 972,
+        "p99_9": 973,
+        "max": 973
+      },
+      "reference_output_tokens": {
+        "n": 50,
+        "p50": 823,
+        "p95": 1019,
+        "p99": 1087,
+        "p99_9": 1119,
+        "max": 1123
+      },
+      "recommended_max_new_tokens": 1408
+    },
+    "mol_opt__drd_solubility": {
+      "prompt_tokens": {
+        "n": 50,
+        "p50": 970,
+        "p95": 984,
+        "p99": 986,
+        "p99_9": 986,
+        "max": 986
+      },
+      "reference_output_tokens": {
+        "n": 50,
+        "p50": 788,
+        "p95": 952,
+        "p99": 1022,
+        "p99_9": 1070,
+        "max": 1075
+      },
+      "recommended_max_new_tokens": 1408
+    },
+    "mol_opt__gsk_logp": {
+      "prompt_tokens": {
+        "n": 50,
+        "p50": 967,
+        "p95": 977,
+        "p99": 978,
+        "p99_9": 978,
+        "max": 978
+      },
+      "reference_output_tokens": {
+        "n": 50,
+        "p50": 760,
+        "p95": 954,
+        "p99": 1005,
+        "p99_9": 1030,
+        "max": 1033
+      },
+      "recommended_max_new_tokens": 1408
+    }
+  }
+}

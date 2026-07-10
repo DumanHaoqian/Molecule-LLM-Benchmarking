@@ -48,6 +48,10 @@ def plan_batches(
         raise ValueError(f"unknown batching mode: {config.batching}")
     if config.max_batch_size < 1 or config.token_budget < 1:
         raise ValueError("batch size and token budget must be positive")
+    if config.max_padding_ratio < 1:
+        raise ValueError("max padding ratio must be at least 1")
+    if config.long_prompt_threshold < 1:
+        raise ValueError("long prompt threshold must be positive")
 
     bands = parse_length_batch_policy(config.length_batch_policy)
     for item in prepared:
@@ -58,23 +62,36 @@ def plan_batches(
                 f"exceeding token budget {config.token_budget} even at batch size 1"
             )
 
+    def fits(candidate: List[PreparedInput], batch_limit: int) -> bool:
+        if len(candidate) > batch_limit:
+            return False
+        prompt_lengths = [item.prompt_tokens for item in candidate]
+        if len(candidate) > 1 and max(prompt_lengths) >= config.long_prompt_threshold:
+            return False
+        max_prompt = max(prompt_lengths)
+        min_prompt = max(1, min(prompt_lengths))
+        if max_prompt / min_prompt > config.max_padding_ratio:
+            return False
+        return (
+            len(candidate) * (max_prompt + config.max_new_tokens)
+            <= config.token_budget
+        )
+
     if config.batching == "fixed":
         ordered = sorted(prepared, key=lambda p: p.item.example_index)
         planned: List[Tuple[int, List[PreparedInput]]] = []
         current: List[PreparedInput] = []
         for item in ordered:
             candidate = current + [item]
-            max_prompt = max(x.prompt_tokens for x in candidate)
-            fits_tokens = (
-                len(candidate) * (max_prompt + config.max_new_tokens)
-                <= config.token_budget
-            )
-            if current and (len(candidate) > config.max_batch_size or not fits_tokens):
+            if current and not fits(candidate, config.max_batch_size):
                 planned.append((-1, current))
                 current = [item]
             else:
                 current = candidate
-            if len(current) == config.max_batch_size:
+            if len(current) == config.max_batch_size or (
+                len(current) == 1
+                and current[0].prompt_tokens >= config.long_prompt_threshold
+            ):
                 planned.append((-1, current))
                 current = []
         if current:
@@ -88,19 +105,23 @@ def plan_batches(
 
     planned: List[Tuple[int, List[PreparedInput]]] = []
     for band in sorted(grouped, reverse=True):
-        values = sorted(grouped[band], key=lambda p: (-p.item.size_hint, p.item.example_index))
+        values = sorted(
+            grouped[band],
+            key=lambda p: (-p.prompt_tokens, -p.item.size_hint, p.item.example_index),
+        )
         band_limit = min(bands[band][1], config.max_batch_size)
         current: List[PreparedInput] = []
         for item in values:
             candidate = current + [item]
-            max_prompt = max(x.prompt_tokens for x in candidate)
-            fits_tokens = len(candidate) * (max_prompt + config.max_new_tokens) <= config.token_budget
-            if current and (len(candidate) > band_limit or not fits_tokens):
+            if current and not fits(candidate, band_limit):
                 planned.append((band, current))
                 current = [item]
             else:
                 current = candidate
-            if len(current) == band_limit:
+            if len(current) == band_limit or (
+                len(current) == 1
+                and current[0].prompt_tokens >= config.long_prompt_threshold
+            ):
                 planned.append((band, current))
                 current = []
         if current:

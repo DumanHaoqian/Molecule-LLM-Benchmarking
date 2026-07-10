@@ -45,7 +45,8 @@ class FakeModel(Model):
         for batch_id, item in enumerate(inputs, 1):
             output = GenerationOutput(
                 example_index=item.example_index,
-                text=item.instruction,
+                raw_text=item.instruction,
+                answer_text=item.instruction,
                 prompt_tokens=len(item.instruction),
                 output_tokens=2,
                 finish_reason="eos",

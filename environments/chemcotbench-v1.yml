@@ -1,0 +1,14 @@
+name: chemcotbench-v1-eval
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - rdkit=2023.09.6
+  - numpy<2
+  - scipy<1.12
+  - nltk>=3.9
+  - scikit-learn=1.2.2
+  - pandas
+  - pip
+  - pip:
+      - huggingface_hub

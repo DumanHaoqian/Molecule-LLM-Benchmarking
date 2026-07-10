@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this benchmark or codebase, please cite our paper as below."
+authors:
+  - family-names: "Guo"
+    given-names: "Hongyu"
+  - family-names: "Li"
+    given-names: "Hao"
+  - family-names: "Cao"
+    given-names: "He"
+  - family-names: "Zhang"
+    given-names: "Gongbo"
+  - family-names: "Yuan"
+    given-names: "Li"
+title: "From Answers to States: Verifiable Process-Level Evaluation of Chemical Reasoning in Large Language Models"
+url: "https://github.com/fresnellll/ChemCoTBench-V2"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Guo"
+      given-names: "Hongyu"
+    - family-names: "Li"
+      given-names: "Hao"
+    - family-names: "Cao"
+      given-names: "He"
+    - family-names: "Zhang"
+      given-names: "Gongbo"
+    - family-names: "Yuan"
+      given-names: "Li"
+  title: "From Answers to States: Verifiable Process-Level Evaluation of Chemical Reasoning in Large Language Models"
+  journal: "arXiv preprint arXiv:2606.03660"
+  year: 2026

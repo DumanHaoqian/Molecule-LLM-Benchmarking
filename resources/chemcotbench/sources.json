@@ -1,0 +1,16 @@
+{
+  "chemcotbench": {
+    "repo_id": "IDEA-AI4S/ChemCoTBench",
+    "revision": "4cfab96c6f511a504519e2cc003521b6afbac338",
+    "gated": true,
+    "expected_samples": 1495
+  },
+  "chemcotbench-v2": {
+    "repo_id": "fresnellll/ChemCoTBench-V2",
+    "revision": "f0bb2fb00c97cb3257294a639e28f960f2da157e",
+    "gated": false,
+    "expected_samples": 5620,
+    "expected_subtasks": 31,
+    "expected_reporting_tasks": 18
+  }
+}

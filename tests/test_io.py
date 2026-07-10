@@ -30,6 +30,15 @@ def make_record(index):
 
 
 class ArtifactIoTest(unittest.TestCase):
+    def test_append_one_is_visible_before_writer_closes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "partial.jsonl")
+            row = record_to_row(make_record(0))
+            with PartialWriter(path) as writer:
+                writer.append_one(row)
+                with open(path, encoding="utf-8") as file:
+                    self.assertEqual(json.loads(file.readline()), row)
+
     def test_truncated_last_row_is_repaired_and_finalized(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths = ArtifactPaths(os.path.join(tmp, "predictions"))

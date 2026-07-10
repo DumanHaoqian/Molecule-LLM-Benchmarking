@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 tomg_resources/
+resources/chemcotbench/v1/
+resources/chemcotbench/v2/
+resources/chemcotbench/manifests/*.json
+oracle/

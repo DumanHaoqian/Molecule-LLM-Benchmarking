@@ -13,3 +13,6 @@ rouge_score>=0.1.2
 fcd_torch
 gensim           # Text2Mol mol2vec vectors
 transformers     # Text2Mol SciBERT
+huggingface_hub  # pinned ChemCoTBench snapshot downloads
+pandas           # ChemCoTBench evaluator utilities
+scikit-learn     # ChemCoTBench reporting metrics
