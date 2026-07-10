@@ -9,8 +9,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import json
+import os
+
 from .io import (
     pred_paths,
+    pred_stem,
     read_records,
     write_meta,
     write_records,
@@ -122,6 +126,26 @@ def run_evaluation(
             rows.append(
                 {"display_name": spec.display_name, "params": spec.params, "metrics": metrics}
             )
+            # per-example scores (structured, for bad-case analysis)
+            scored = task.score_examples(records, device=device)
+            if scored is not None:
+                path = pred_stem(out_dir, benchmark_name, mkey, tname, split) + "__scored.jsonl"
+                with open(path, "w") as f:
+                    for rec, sc in zip(records, scored):
+                        f.write(
+                            json.dumps(
+                                {
+                                    "example": rec.example,
+                                    "prompt": rec.prompt,
+                                    "raw_output": rec.raw_output,
+                                    "prediction": rec.prediction,
+                                    "scores": sc,
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n"
+                        )
+                print(f"[eval] per-example scores -> {path}")
         table = _render_table(task, rows)
         md_sections.append(f"### {benchmark_name} — {tname}\n\n{table}\n")
         result["tasks"][tname] = rows

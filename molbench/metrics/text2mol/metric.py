@@ -40,3 +40,13 @@ def text2mol_score(
         print(f"[text2mol] unavailable ({_LOAD_ERROR}); skipping")
         return None
     return float(model.mean_similarity(mols, texts, device=device))
+
+
+def text2mol_scores(
+    mols: List[str], texts: List[str], device: str = "cpu"
+) -> Optional[List[Optional[float]]]:
+    """Per-pair cosine similarities (None if model unavailable)."""
+    model = _try_load()
+    if model is None:
+        return None
+    return model.pair_similarities(mols, texts, device=device)

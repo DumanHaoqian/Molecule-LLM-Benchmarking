@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -44,4 +44,14 @@ class Task(ABC):
 
     @abstractmethod
     def evaluate(self, records: List[EvalRecord], device: str = "cpu") -> Dict[str, Any]:
-        """Score records; return a metric-name -> value dict."""
+        """Score records; return a metric-name -> value dict (aggregate)."""
+
+    def score_examples(
+        self, records: List[EvalRecord], device: str = "cpu"
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Per-example scores, aligned to ``records`` (for bad-case analysis).
+
+        Return None if the task has no per-example scoring. Each dict is merged
+        into the record when the runner writes the ``__scored.jsonl`` file.
+        """
+        return None

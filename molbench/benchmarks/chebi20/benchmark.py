@@ -63,6 +63,19 @@ class CaptioningTask(Task):
         m["text2mol"] = text2mol_score(gold_smiles, preds, device=device)
         return m
 
+    def score_examples(self, records, device="cpu"):
+        from ...metrics.text import caption_metrics_per_example
+        from ...metrics.text2mol.metric import text2mol_scores
+
+        preds = [r.prediction for r in records]
+        refs = [r.example[TEXT] for r in records]
+        gold_smiles = [r.example[SMILES] for r in records]
+        per = caption_metrics_per_example(preds, refs)
+        t2m = text2mol_scores(gold_smiles, preds, device=device)
+        for i, d in enumerate(per):
+            d["text2mol"] = t2m[i] if t2m is not None else None
+        return per
+
 
 class Caption2SMILESTask(Task):
     name = "caption2smiles"

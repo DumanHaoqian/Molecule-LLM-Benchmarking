@@ -104,32 +104,38 @@ class Text2Mol:
         return np.sum(vecs, axis=0)
 
     @torch.no_grad()
-    def mean_similarity(
+    def pair_similarities(
         self, mols: List[str], texts: List[str], device: str = "cpu", batch_size: int = 32
-    ) -> float:
+    ) -> List[Optional[float]]:
+        """Per-pair cosine similarity, aligned to input (None if mol invalid)."""
         self.model.to(device)
-        feats, keep_texts = [], []
-        for smi, txt in zip(mols, texts):
+        results: List[Optional[float]] = [None] * len(mols)
+        idxs, feats, keep_texts = [], [], []
+        for i, (smi, txt) in enumerate(zip(mols, texts)):
             v = self._featurize(smi)
             if v is not None:
+                idxs.append(i)
                 feats.append(v)
                 keep_texts.append(txt)
-        if not feats:
-            return 0.0
-        sims = []
-        for i in range(0, len(feats), batch_size):
+        for b in range(0, len(feats), batch_size):
             mol_vec = torch.tensor(
-                np.stack(feats[i : i + batch_size]), dtype=torch.float32, device=device
+                np.stack(feats[b : b + batch_size]), dtype=torch.float32, device=device
             )
             enc = self.tokenizer(
-                keep_texts[i : i + batch_size], padding=True, truncation=True,
+                keep_texts[b : b + batch_size], padding=True, truncation=True,
                 max_length=MAX_TEXT_LEN, return_tensors="pt",
             ).to(device)
             text_x, mol_x = self.model(enc["input_ids"], enc["attention_mask"], mol_vec)
-            sims.append(
-                torch.nn.functional.cosine_similarity(text_x, mol_x, dim=1).cpu()
-            )
-        return float(torch.cat(sims).mean())
+            cos = torch.nn.functional.cosine_similarity(text_x, mol_x, dim=1).cpu().tolist()
+            for j, c in zip(idxs[b : b + batch_size], cos):
+                results[j] = float(c)
+        return results
+
+    def mean_similarity(
+        self, mols: List[str], texts: List[str], device: str = "cpu", batch_size: int = 32
+    ) -> float:
+        sims = [s for s in self.pair_similarities(mols, texts, device, batch_size) if s is not None]
+        return float(sum(sims) / len(sims)) if sims else 0.0
 
 
 def load_text2mol(resource_dir: str) -> Text2Mol:

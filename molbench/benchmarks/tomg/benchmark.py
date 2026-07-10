@@ -17,8 +17,8 @@ from ...core.registry import register_benchmark
 from ...core.task import EvalRecord, Task
 from ...utils.chem import canonicalize, extract_smiles
 
-HF_REPO = "phenixace/S2-TOMG-Bench"
-CSV_URL = "https://huggingface.co/datasets/phenixace/S2-TOMG-Bench/resolve/main/{cfg}.csv"
+CSV_URL = "https://huggingface.co/datasets/{repo}/resolve/main/{cfg}.csv"
+SCALE_REPO = {"full": "phenixace/S2-TOMG-Bench", "mini": "phenixace/S2-TOMG-Bench-mini"}
 
 # (task_group, subtask) — config name is "{group}_{subtask}"
 SUBTASK_CONFIGS = [
@@ -109,18 +109,42 @@ class OpenGenerationTask(Task):
         out["_per_subtask"] = per_sub
         return out
 
+    def score_examples(self, records, device="cpu"):
+        from ...metrics.tomg import SUBTASKS, score_examples_subtask
+
+        by_sub: Dict[str, List[int]] = {}
+        for idx, r in enumerate(records):
+            by_sub.setdefault(r.example["subtask"], []).append(idx)
+        out: List[Any] = [None] * len(records)
+        for sub, idxs in by_sub.items():
+            rows = [records[i].example for i in idxs]
+            preds = [records[i].prediction for i in idxs]
+            sc = score_examples_subtask(sub, rows, preds)
+            for i, s in zip(idxs, sc):
+                s["subtask"] = sub
+                s["task_group"] = SUBTASKS[sub][0]
+                s["wsr_contrib"] = (s["quality"] or 0.0) * s["success"]
+                out[i] = s
+        return out
+
 
 class TOMGBenchmark(Benchmark):
-    name = "tomg"
+    """`scale`: 'full' (5000/subtask) or 'mini' (500/subtask)."""
+
+    def __init__(self, scale: str = "full"):
+        self.scale = scale
+        self.name = "tomg" if scale == "full" else "tomg-mini"
 
     def load(self, split: str = "test", limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """`limit` caps examples PER SUBTASK (so all 9 subtasks are covered)."""
         from datasets import load_dataset
 
+        repo = SCALE_REPO[self.scale]
         examples: List[Dict[str, Any]] = []
         for group, subtask in SUBTASK_CONFIGS:
             cfg = f"{group}_{subtask}"
-            ds = load_dataset("csv", data_files={"test": CSV_URL.format(cfg=cfg)}, split="test")
+            url = CSV_URL.format(repo=repo, cfg=cfg)
+            ds = load_dataset("csv", data_files={"test": url}, split="test")
             if limit is not None:
                 ds = ds.select(range(min(limit, len(ds))))
             for row in ds:
@@ -134,4 +158,5 @@ class TOMGBenchmark(Benchmark):
         return {"open_generation": OpenGenerationTask()}
 
 
-register_benchmark("tomg", TOMGBenchmark)
+register_benchmark("tomg", lambda: TOMGBenchmark("full"))
+register_benchmark("tomg-mini", lambda: TOMGBenchmark("mini"))

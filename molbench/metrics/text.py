@@ -4,9 +4,11 @@ from __future__ import annotations
 from typing import Dict, List
 
 import nltk
-from nltk.translate.bleu_score import corpus_bleu
+from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
 from nltk.translate.meteor_score import meteor_score
 from rouge_score import rouge_scorer
+
+_SMOOTH = SmoothingFunction().method1
 
 
 def _tok(text: str) -> List[str]:
@@ -41,3 +43,21 @@ def caption_metrics(preds: List[str], refs: List[str]) -> Dict[str, float]:
         "rougeL": rl / n,
         "meteor": meteor / n,
     }
+
+
+def caption_metrics_per_example(preds: List[str], refs: List[str]) -> List[Dict[str, float]]:
+    """Per-example caption scores (sentence-level BLEU, ROUGE, METEOR)."""
+    scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
+    out = []
+    for pred, ref in zip(preds, refs):
+        tp, tr = _tok(pred), _tok(ref)
+        rs = scorer.score(ref, pred)
+        out.append({
+            "bleu2": sentence_bleu([tr], tp, weights=(0.5, 0.5), smoothing_function=_SMOOTH),
+            "bleu4": sentence_bleu([tr], tp, weights=(0.25,) * 4, smoothing_function=_SMOOTH),
+            "rouge1": rs["rouge1"].fmeasure,
+            "rouge2": rs["rouge2"].fmeasure,
+            "rougeL": rs["rougeL"].fmeasure,
+            "meteor": meteor_score([tr], tp),
+        })
+    return out

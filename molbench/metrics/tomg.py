@@ -219,6 +219,30 @@ SUBTASKS = {
 TASK_GROUPS = ["MolCustom", "MolEdit", "MolOpt"]
 
 
+def score_examples_subtask(subtask: str, rows: List[Dict], preds: List[str]) -> List[Dict]:
+    """Per-example {valid, success, quality} for one subtask, aligned to inputs."""
+    _, qtype = SUBTASKS[subtask]
+    out = [{"valid": False, "success": 0, "quality": None} for _ in preds]
+    vidx, vpreds, vrows = [], [], []
+    for i, (row, pred) in enumerate(zip(rows, preds)):
+        valid = bool(mol_prop(pred, "validity"))
+        out[i]["valid"] = valid
+        if valid:
+            out[i]["success"] = 1 if _success(subtask, row, pred) else 0
+            vidx.append(i)
+            vpreds.append(pred)
+            vrows.append(row)
+    if qtype == "similarity":
+        for i, row, pred in zip(vidx, vrows, vpreds):
+            out[i]["quality"] = calculate_similarity(row["molecule"], pred)
+    else:  # novelty
+        nov = novelty(vpreds)
+        if nov is not None:
+            for i, nv in zip(vidx, nov):
+                out[i]["quality"] = nv
+    return out
+
+
 def score_subtask(subtask: str, rows: List[Dict], preds: List[str]) -> Dict[str, float]:
     """Return {sr, quality, wsr, n, validity} for one subtask."""
     group, qtype = SUBTASKS[subtask]
