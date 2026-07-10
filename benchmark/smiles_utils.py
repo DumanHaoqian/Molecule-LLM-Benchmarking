@@ -29,6 +29,29 @@ def canonicalize(smiles: str) -> Optional[str]:
     return Chem.MolToSmiles(mol)
 
 
+_ANSWER_RE = re.compile(r"<answer>(.*?)</answer>", re.DOTALL)
+_THINK_RE = re.compile(r"</think>", re.DOTALL)
+
+
+def parse_answer(text: str, reasoning: bool) -> str:
+    """Extract the final answer from a (possibly reasoning) model output.
+
+    For reasoning models the answer sits inside ``<answer>...</answer>``; if the
+    closing tag was truncated we fall back to whatever follows ``</think>``,
+    then to the raw text. Non-reasoning outputs are returned stripped.
+    """
+    text = (text or "").strip()
+    if not reasoning:
+        return text
+    m = _ANSWER_RE.search(text)
+    if m:
+        return m.group(1).strip()
+    # truncated / malformed: take everything after the reasoning block
+    parts = _THINK_RE.split(text, maxsplit=1)
+    tail = parts[1] if len(parts) > 1 else text
+    return tail.replace("<answer>", "").replace("</answer>", "").strip()
+
+
 def extract_smiles(text: str) -> str:
     """Pull the most likely SMILES string out of a free-form model answer.
 

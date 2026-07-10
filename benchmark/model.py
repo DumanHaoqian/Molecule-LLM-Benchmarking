@@ -15,11 +15,11 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 DEFAULT_MODEL_PATH = (
     "/home/haoqian/Data/SAERAG/Open-Scopes/ChemDFM-Scope/ChemDFM-v2.0-14B"
 )
-DEFAULT_SYSTEM = "You are ChemDFM, a chemistry assistant."
+DEFAULT_SYSTEM = "You are a helpful assistant."
 
 
 class ChemDFMModel:
-    """Load ChemDFM-v2.0-14B (Qwen2ForCausalLM) and generate completions."""
+    """Load a ChemDFM (Qwen2ForCausalLM) checkpoint and generate completions."""
 
     def __init__(
         self,
