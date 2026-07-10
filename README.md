@@ -63,11 +63,15 @@ bash scripts/download_text2mol.sh     # Text2Mol checkpoint + mol2vec model (~43
 ## Run
 
 ```bash
-# stage 1 — generate (chemdfm venv)
+# stage 1 — generate (chemdfm venv; resumable by default)
 source /home/haoqian/Data/SAERAG/venvs/chemdfm/bin/activate
-python -m molbench generate --benchmark chebi20 --model chemdfm-v2 --split test --out-dir results/full
+python -m molbench generate --benchmark chebi20 --model chemdfm-v2 --split test \
+  --batching length-aware --max-batch-size 16 --out-dir results/full
 python -m molbench generate --benchmark chebi20 --model chemdfm-r  --split test --out-dir results/full
-#   --task {captioning|caption2smiles|all}  --limit N  --batch-size 8  --do-sample
+#   --task {captioning|caption2smiles|all}  --limit N  --do-sample
+#   --resume / --no-resume  --restart  --slice START:STOP
+#   --length-batch-policy '128:16,256:8,384:4,512:2,inf:1'
+#   --token-budget 16384
 
 # stage 2 — evaluate (ChEBI-20-Eva venv)
 source /home/haoqian/Data/SAERAG/venvs/ChEBI-20-Eva/bin/activate
@@ -86,9 +90,37 @@ python -m molbench evaluate --benchmark tomg --models chemdfm-r --out-dir result
 ```
 
 Artifacts (git-ignored, under `--out-dir`):
-`<benchmark>__<model>__<task>__<split>.jsonl` (+ `.meta.json`),
+`<benchmark>__<model>__<task>__<split>.jsonl` (+ `.meta.json` and `.run.json`),
 `tables_<benchmark>_<split>.md`, `metrics_<benchmark>_<split>.json`.
 Without `TEXT2MOL_DIR`, all other metrics still compute and Text2Mol shows `—`.
+
+Generation and per-example evaluation are transactional. Every completed batch
+is appended to a schema-v2 `.partial.jsonl`, flushed and `fsync`'d. Re-running
+the same command resumes after validating the dataset/model/config/code
+fingerprint. `--restart` archives active artifacts before starting over; it
+never mixes incompatible runs. A forced process kill loses at most the current
+batch. Final JSONL files are sorted by `example_index` and atomically replaced.
+
+ChEBI captioning uses conservative SMILES-length batches by default: 16 up to
+128 characters, 8 up to 256, 4 up to 384, 2 up to 512, and 1 above 512. The
+model also enforces the token budget after applying its full chat template.
+Progress logs report prompt/output lengths, peak reserved GPU memory, elapsed
+time, ETA, and a heartbeat while a long batch is still computing.
+
+The full v2 driver owns its log and supports stage boundaries:
+
+```bash
+nohup bash scripts/run_chemdfm_v2.sh --restart >/dev/null 2>&1 &
+# Stop cleanly after ChEBI generation:
+bash scripts/run_chemdfm_v2.sh --stop-after chebi20/captioning
+```
+
+Legacy smoke predictions must be explicitly migrated rather than guessed by
+the reader:
+
+```bash
+python scripts/migrate_legacy_artifacts.py OLD.jsonl NEW.v2.jsonl --task captioning
+```
 
 ## Adding a new benchmark (e.g. ChemCoTBench)
 

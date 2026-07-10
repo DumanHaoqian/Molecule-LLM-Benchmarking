@@ -6,7 +6,7 @@ the registry never loads model weights. Benchmarks are registered as factories.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List
+from typing import Any, Callable, Dict, List
 
 from .benchmark import Benchmark
 from .model import Model
@@ -18,6 +18,7 @@ class ModelSpec:
     display_name: str
     params: str
     build: Callable[[], Model]  # lazily instantiates the heavy model
+    artifact_identity: Dict[str, Any] = field(default_factory=dict)
 
 
 _MODELS: Dict[str, ModelSpec] = {}

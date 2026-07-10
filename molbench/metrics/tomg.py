@@ -11,7 +11,10 @@ Novelty needs a ZINC250k reference (TOMG_ZINC_PATH); if absent it degrades to 0.
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import pickle
+import tempfile
 from typing import Dict, List, Optional
 
 from rdkit import Chem, DataStructs, RDLogger
@@ -123,6 +126,14 @@ _ZINC_FPS: Optional[list] = None
 _ZINC_ERROR: Optional[str] = None
 
 
+def _file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _load_zinc_fps():
     global _ZINC_FPS, _ZINC_ERROR
     if _ZINC_FPS is not None or _ZINC_ERROR is not None:
@@ -131,6 +142,22 @@ def _load_zinc_fps():
     if not path or not os.path.isfile(path):
         _ZINC_ERROR = "TOMG_ZINC_PATH not set / not found"
         return None
+    source_sha = _file_sha256(path)
+    cache_path = path + ".morgan-r2-2048.pkl"
+    if os.path.isfile(cache_path):
+        try:
+            with open(cache_path, "rb") as f:
+                cached = pickle.load(f)
+            if (
+                cached.get("source_sha256") == source_sha
+                and cached.get("radius") == 2
+                and cached.get("n_bits") == 2048
+            ):
+                _ZINC_FPS = cached["fingerprints"]
+                print(f"[tomg] loaded {len(_ZINC_FPS)} cached ZINC fingerprints")
+                return _ZINC_FPS
+        except (OSError, pickle.PickleError, AttributeError, KeyError, EOFError) as exc:
+            print(f"[tomg] ignoring invalid fingerprint cache: {exc}")
     fps = []
     with open(path) as f:
         for line in f:
@@ -140,6 +167,22 @@ def _load_zinc_fps():
                 fps.append(fp)
     _ZINC_FPS = fps
     print(f"[tomg] loaded {len(fps)} ZINC reference fingerprints for novelty")
+    payload = {
+        "source_sha256": source_sha,
+        "radius": 2,
+        "n_bits": 2048,
+        "fingerprints": fps,
+    }
+    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(cache_path), dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "wb") as f:
+            pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, cache_path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
     return _ZINC_FPS
 
 
@@ -167,8 +210,7 @@ def _norm(group: str) -> str:
 
 
 def _success(subtask: str, row: Dict, pred: str) -> bool:
-    if not mol_prop(pred, "validity"):
-        return False
+    """Evaluate a constraint for a molecule already known to be valid."""
     if subtask == "AtomNum":
         return all(mol_prop(pred, "num_" + a) == int(row[a]) for a in ATOM_COLS)
     if subtask == "BondNum":

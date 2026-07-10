@@ -51,19 +51,10 @@ class CaptioningTask(Task):
     def postprocess(self, answer: str) -> str:
         return answer  # the caption text as-is
 
-    def evaluate(self, records: List[EvalRecord], device: str = "cpu") -> Dict[str, Any]:
-        from ...metrics.text import caption_metrics
-        from ...metrics.text2mol.metric import text2mol_score
+    def batch_length(self, example: Dict[str, Any], prompt: str) -> int:
+        return len(str(example[SMILES]))
 
-        preds = [r.prediction for r in records]
-        refs = [r.example[TEXT] for r in records]
-        gold_smiles = [r.example[SMILES] for r in records]
-        m = caption_metrics(preds, refs)
-        # captioning: generated caption vs gold molecule
-        m["text2mol"] = text2mol_score(gold_smiles, preds, device=device)
-        return m
-
-    def score_examples(self, records, device="cpu"):
+    def score_chunk(self, records, device="cpu"):
         from ...metrics.text import caption_metrics_per_example
         from ...metrics.text2mol.metric import text2mol_scores
 
@@ -75,6 +66,18 @@ class CaptioningTask(Task):
         for i, d in enumerate(per):
             d["text2mol"] = t2m[i] if t2m is not None else None
         return per
+
+    def aggregate(self, records, scores, device="cpu"):
+        from ...metrics.text import caption_metrics
+
+        if scores is None:
+            raise ValueError("captioning aggregate requires per-example scores")
+        preds = [r.prediction for r in records]
+        refs = [r.example[TEXT] for r in records]
+        metrics = caption_metrics(preds, refs, per_example=scores)
+        valid = [row["text2mol"] for row in scores if row.get("text2mol") is not None]
+        metrics["text2mol"] = sum(valid) / len(valid) if valid else None
+        return metrics
 
 
 class Caption2SMILESTask(Task):

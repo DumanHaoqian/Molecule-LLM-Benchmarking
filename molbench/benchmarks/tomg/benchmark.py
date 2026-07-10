@@ -81,35 +81,7 @@ class OpenGenerationTask(Task):
         alt = extract_smiles(answer)  # fallback: first RDKit-valid token
         return alt or s
 
-    def evaluate(self, records: List[EvalRecord], device: str = "cpu") -> Dict[str, Any]:
-        from ...metrics.tomg import SUBTASKS, TASK_GROUPS, score_subtask
-
-        by_sub: Dict[str, List[EvalRecord]] = {}
-        for r in records:
-            by_sub.setdefault(r.example["subtask"], []).append(r)
-
-        per_sub = {}
-        for sub, recs in by_sub.items():
-            per_sub[sub] = score_subtask(
-                sub, [r.example for r in recs], [r.prediction for r in recs]
-            )
-
-        out: Dict[str, Any] = {}
-        for group in TASK_GROUPS:
-            subs = [s for s in per_sub if SUBTASKS[s][0] == group]
-            key = group.lower()
-            if subs:
-                out[f"{key}_sr"] = sum(per_sub[s]["sr"] for s in subs) / len(subs)
-                out[f"{key}_wsr"] = sum(per_sub[s]["wsr"] for s in subs) / len(subs)
-            else:
-                out[f"{key}_sr"] = out[f"{key}_wsr"] = None
-        if per_sub:
-            out["avg_sr"] = sum(v["sr"] for v in per_sub.values()) / len(per_sub)
-            out["avg_wsr"] = sum(v["wsr"] for v in per_sub.values()) / len(per_sub)
-        out["_per_subtask"] = per_sub
-        return out
-
-    def score_examples(self, records, device="cpu"):
+    def score_chunk(self, records, device="cpu"):
         from ...metrics.tomg import SUBTASKS, score_examples_subtask
 
         by_sub: Dict[str, List[int]] = {}
@@ -123,8 +95,47 @@ class OpenGenerationTask(Task):
             for i, s in zip(idxs, sc):
                 s["subtask"] = sub
                 s["task_group"] = SUBTASKS[sub][0]
-                s["wsr_contrib"] = (s["quality"] or 0.0) * s["success"]
                 out[i] = s
+        return out
+
+    def aggregate(self, records, scores, device="cpu"):
+        from ...metrics.tomg import SUBTASKS, TASK_GROUPS
+
+        if scores is None:
+            raise ValueError("TOMG aggregate requires per-example scores")
+        by_sub: Dict[str, List[Dict[str, Any]]] = {}
+        for score in scores:
+            by_sub.setdefault(score["subtask"], []).append(score)
+
+        per_sub: Dict[str, Dict[str, float]] = {}
+        for subtask, rows in by_sub.items():
+            n = len(rows)
+            valid = [row for row in rows if row["valid"]]
+            quality_values = [row["quality"] for row in valid if row["quality"] is not None]
+            sr = sum(row["success"] for row in rows) / n if n else 0.0
+            quality = (
+                sum(quality_values) / len(quality_values) if quality_values else 0.0
+            )
+            per_sub[subtask] = {
+                "sr": sr,
+                "quality": quality,
+                "wsr": quality * sr,
+                "n": n,
+                "validity": len(valid) / n if n else 0.0,
+            }
+
+        out: Dict[str, Any] = {}
+        for group in TASK_GROUPS:
+            subtasks = [s for s in per_sub if SUBTASKS[s][0] == group]
+            key = group.lower()
+            if subtasks:
+                out[f"{key}_sr"] = sum(per_sub[s]["sr"] for s in subtasks) / len(subtasks)
+                out[f"{key}_wsr"] = sum(per_sub[s]["wsr"] for s in subtasks) / len(subtasks)
+            else:
+                out[f"{key}_sr"] = out[f"{key}_wsr"] = None
+        out["avg_sr"] = sum(v["sr"] for v in per_sub.values()) / len(per_sub)
+        out["avg_wsr"] = sum(v["wsr"] for v in per_sub.values()) / len(per_sub)
+        out["_per_subtask"] = per_sub
         return out
 
 

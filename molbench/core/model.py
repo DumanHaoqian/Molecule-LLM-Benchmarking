@@ -1,34 +1,67 @@
-"""Model abstraction — benchmark-agnostic text generation.
-
-A ``Model`` takes plain instruction strings and returns *clean answer strings*.
-Everything model-specific (chat template, system prompt, reasoning-answer
-parsing) lives behind this interface, so benchmarks and the runner never care
-which model they are driving.
-"""
+"""Benchmark-agnostic model and incremental generation contracts."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterator, List
+
+
+@dataclass(frozen=True)
+class GenerationInput:
+    """One indexed instruction handed from the runner to a model."""
+
+    example_index: int
+    example_id: str
+    instruction: str
+    size_hint: int
+
+
+@dataclass
+class GenerationOutput:
+    """One generated answer plus enough metadata for durable persistence."""
+
+    example_index: int
+    text: str
+    prompt_tokens: int
+    output_tokens: int
+    finish_reason: str
+    size_hint: int
+    stop_token_id: int | None = None
+
+
+@dataclass
+class GenerationBatch:
+    """A completed physical batch. The runner persists each yielded batch."""
+
+    batch_id: int
+    outputs: List[GenerationOutput]
+    elapsed_seconds: float
+    remaining_examples: int
+    eta_seconds: float | None = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class GenerationConfig:
+    max_new_tokens: int = 256
+    max_batch_size: int = 8
+    do_sample: bool = False
+    batching: str = "length-aware"
+    length_batch_policy: str = "128:16,256:8,384:4,512:2,inf:1"
+    token_budget: int = 16384
+    heartbeat_seconds: int = 30
 
 
 class Model(ABC):
-    #: whether the model emits a reasoning trace before its answer. The runner
-    #: uses this to grant extra ``max_new_tokens`` headroom for the trace.
     reasoning: bool = False
-    #: tokens of headroom to add for the reasoning trace (reasoning models only)
     reasoning_budget: int = 1536
 
     @abstractmethod
-    def generate(
-        self,
-        instructions: List[str],
-        max_new_tokens: int = 256,
-        batch_size: int = 8,
-        do_sample: bool = False,
-    ) -> List[str]:
-        """Return one clean answer per instruction (reasoning traces removed)."""
+    def iter_generate(
+        self, inputs: List[GenerationInput], config: GenerationConfig
+    ) -> Iterator[GenerationBatch]:
+        """Yield completed batches; never retain a whole task before yielding."""
 
     def answer_budget(self, task_max_new_tokens: int) -> int:
-        """Total generation budget = answer budget (+ reasoning headroom)."""
         extra = self.reasoning_budget if self.reasoning else 0
         return task_max_new_tokens + extra
