@@ -1,0 +1,8 @@
+# Core (already present in the chemdfm venv, listed for reproducibility)
+torch>=2.7
+transformers>=5.0
+datasets>=3.0
+rdkit>=2024.03
+nltk>=3.9
+# Added by scripts/setup_env.sh
+rouge_score>=0.1.2
