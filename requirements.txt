@@ -1,8 +1,15 @@
-# Core (already present in the chemdfm venv, listed for reproducibility)
-torch>=2.7
-transformers>=5.0
-datasets>=3.0
+# Dependencies are split across two virtualenvs (see scripts/).
+#
+# Generation venv (chemdfm) — model runtime:
+#   torch>=2.7  transformers>=5.0  datasets>=3.0  rdkit>=2024.03
+#
+# Evaluation venv (ChEBI-20-Eva) — metrics, built by scripts/setup_eval_env.sh:
+torch            # CPU build
+numpy
+scipy<1.14       # fcd_torch uses linalg.sqrtm(disp=...)
 rdkit>=2024.03
 nltk>=3.9
-# Added by scripts/setup_env.sh
 rouge_score>=0.1.2
+fcd_torch
+gensim           # Text2Mol mol2vec vectors
+transformers     # Text2Mol SciBERT
