@@ -7,6 +7,7 @@ GEN_PY=${CHEMCOT_GEN_PY:-/home/haoqian/Data/SAERAG/venvs/chemdfm/bin/python}
 V1_EVAL_PY=${CHEMCOT_V1_EVAL_PY:-/home/haoqian/Data/SAERAG/venvs/chemcotbench-v1-eval/bin/python}
 V2_EVAL_PY=${CHEMCOT_V2_EVAL_PY:-/home/haoqian/Data/SAERAG/venvs/chemcotbench-v2-eval/bin/python}
 OUT=${CHEMCOT_OUT:-results/chemcotbench_full}
+NOFILE=${MOLBENCH_NOFILE:-65536}
 MODEL=chemdfm-v2
 VERSION=v2
 FAMILY=""
@@ -28,6 +29,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$VERSION" in v1|v2|both) ;; *) echo "invalid --version: $VERSION" >&2; exit 2 ;; esac
+ulimit -n "$NOFILE"
 cd "$REPO"
 mkdir -p "$OUT/history"
 
@@ -90,21 +92,31 @@ run_version() {
     done
     [[ ${#selected[@]} -gt 0 ]] || { echo "no tasks selected for $benchmark" >&2; exit 2; }
 
-    for name in "${selected[@]}"; do
-        args=(
-            -m molbench generate --benchmark "$benchmark" --model "$MODEL"
-            --task "$name" --max-batch-size 8 --batching length-aware
-            --length-batch-policy '256:8,512:4,1024:2,inf:1'
-            --token-budget 16384 --max-padding-ratio 1.20
-            --long-prompt-threshold 1024 --out-dir "$OUT"
-        )
+    common_args=(
+        -m molbench generate --benchmark "$benchmark" --model "$MODEL"
+        --max-batch-size 8 --batching length-aware
+        --length-batch-policy '256:8,512:4,1024:2,inf:1'
+        --token-budget 16384 --max-padding-ratio 1.20
+        --long-prompt-threshold 1024 --out-dir "$OUT"
+    )
+    if [[ -n "$STOP_AFTER" ]]; then
+        # Preserve per-task stopping semantics when explicitly requested.
+        for name in "${selected[@]}"; do
+            args=("${common_args[@]}" --task "$name")
+            [[ "$RESTART" -eq 0 ]] || args+=(--restart)
+            run_stage "GEN $benchmark/$name" "$GEN_PY" "${args[@]}"
+            if [[ "$STOP_AFTER" == "$benchmark/$name" || "$STOP_AFTER" == "$name" ]]; then
+                echo "[driver] STOP_AFTER $benchmark/$name"
+                exit 0
+            fi
+        done
+    else
+        args=("${common_args[@]}")
+        for name in "${selected[@]}"; do args+=(--task "$name"); done
         [[ "$RESTART" -eq 0 ]] || args+=(--restart)
-        run_stage "GEN $benchmark/$name" "$GEN_PY" "${args[@]}"
-        if [[ "$STOP_AFTER" == "$benchmark/$name" || "$STOP_AFTER" == "$name" ]]; then
-            echo "[driver] STOP_AFTER $benchmark/$name"
-            exit 0
-        fi
-    done
+        run_stage "GEN $benchmark (${#selected[@]} tasks, one model load)" \
+            "$GEN_PY" "${args[@]}"
+    fi
 
     eval_args=(-m molbench evaluate --benchmark "$benchmark" --models "$MODEL" --out-dir "$OUT")
     for name in "${selected[@]}"; do eval_args+=(--task "$name"); done

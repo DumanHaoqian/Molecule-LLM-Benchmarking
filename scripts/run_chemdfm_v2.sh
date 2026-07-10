@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Resumable ChemDFM-v2 run: ChEBI-20 captioning + TOMG-mini + evaluation.
+# Resumable ChemDFM run: ChEBI-20 captioning + S2-TOMG-mini + evaluation.
 set -euo pipefail
 
 REPO=/home/haoqian/Data/SAERAG/v3_Chem_SAE/Stage6_benchmarking
@@ -7,13 +7,17 @@ cd "$REPO"
 
 GEN_PY=/home/haoqian/Data/SAERAG/venvs/chemdfm/bin/python
 EVAL_PY=/home/haoqian/Data/SAERAG/venvs/ChEBI-20-Eva/bin/python
-OUT=results/chemdfm_v2_full
+MODEL=${MOLBENCH_MODEL:-chemdfm-v2}
+OUT=${MOLBENCH_OUT:-results/chemdfm_v2_full}
+NOFILE=${MOLBENCH_NOFILE:-65536}
 STOP_AFTER=all
 RESTART=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --stop-after) STOP_AFTER="$2"; shift 2 ;;
+        --model) MODEL="$2"; shift 2 ;;
+        --out-dir) OUT="$2"; shift 2 ;;
         --restart) RESTART=1; shift ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -23,6 +27,7 @@ case "$STOP_AFTER" in
     chebi20/captioning|tomg-mini|all) ;;
     *) echo "invalid --stop-after: $STOP_AFTER" >&2; exit 2 ;;
 esac
+ulimit -n "$NOFILE"
 
 mkdir -p "$OUT"
 export TEXT2MOL_DIR="$REPO/text2mol_resources"
@@ -77,13 +82,13 @@ run_stage() {
     return "$status"
 }
 
-echo "[driver $(ts)] START out=$OUT restart=$RESTART stop_after=$STOP_AFTER"
+echo "[driver $(ts)] START model=$MODEL out=$OUT restart=$RESTART stop_after=$STOP_AFTER"
 
 restart_arg=()
 if [[ "$RESTART" -eq 1 ]]; then restart_arg=(--restart); fi
 
 run_stage "GEN chebi20/captioning (3301)" \
-    "$GEN_PY" -m molbench generate --benchmark chebi20 --model chemdfm-v2 \
+    "$GEN_PY" -m molbench generate --benchmark chebi20 --model "$MODEL" \
     --task captioning --split test --max-batch-size 16 --batching length-aware \
     --length-batch-policy '128:16,256:8,384:4,512:2,inf:1' \
     --token-budget 16384 --out-dir "$OUT" "${restart_arg[@]}"
@@ -95,7 +100,7 @@ fi
 
 # Only the first stage consumes --restart; later stages have independent stems.
 run_stage "GEN tomg-mini (4500)" \
-    "$GEN_PY" -m molbench generate --benchmark tomg-mini --model chemdfm-v2 \
+    "$GEN_PY" -m molbench generate --benchmark tomg-mini --model "$MODEL" \
     --max-batch-size 16 --batching length-aware --token-budget 16384 \
     --out-dir "$OUT"
 
@@ -105,11 +110,11 @@ if [[ "$STOP_AFTER" == "tomg-mini" ]]; then
 fi
 
 run_stage "EVAL chebi20/captioning" \
-    "$EVAL_PY" -m molbench evaluate --benchmark chebi20 --models chemdfm-v2 \
+    "$EVAL_PY" -m molbench evaluate --benchmark chebi20 --models "$MODEL" \
     --task captioning --split test --out-dir "$OUT" --device cpu
 
 run_stage "EVAL tomg-mini" \
-    "$EVAL_PY" -m molbench evaluate --benchmark tomg-mini --models chemdfm-v2 \
+    "$EVAL_PY" -m molbench evaluate --benchmark tomg-mini --models "$MODEL" \
     --out-dir "$OUT" --device cpu
 
 echo "[driver $(ts)] ALL DONE. Artifacts in $OUT/"
